@@ -72,21 +72,15 @@ func checkListeningServices(ctx context.Context, col collector.Collector) []audi
 			continue
 		}
 
-		severity := audit.SeverityWarn
-		title := fmt.Sprintf("Service exposed on port %s", svc.port)
-
-		if isHighRiskPort(svc.port) {
-			severity = audit.SeverityFail
-			title = fmt.Sprintf("High-risk service exposed on port %s", svc.port)
-		}
+		severity, title, remediation := classifyPort(svc.port)
 
 		findings = append(findings, audit.Finding{
-			ID:       fmt.Sprintf("services-exposed-%s", svc.port),
-			CheckID:  "services",
-			Severity: severity,
-			Title:    title,
-			Evidence: fmt.Sprintf("Address: %s, Process: %s", svc.address, svc.process),
-			Remediation: fmt.Sprintf("Verify if port %s needs to be publicly accessible. Consider binding to 127.0.0.1 or using a VPN.", svc.port),
+			ID:          fmt.Sprintf("services-exposed-%s", svc.port),
+			CheckID:     "services",
+			Severity:    severity,
+			Title:       title,
+			Evidence:    fmt.Sprintf("Address: %s, Process: %s", svc.address, svc.process),
+			Remediation: remediation,
 		})
 	}
 
@@ -157,16 +151,45 @@ func extractPort(addr string) string {
 	return ""
 }
 
-func isHighRiskPort(port string) bool {
-	highRisk := map[string]bool{
-		"3306":  true, // MySQL
-		"5432":  true, // PostgreSQL
-		"6379":  true, // Redis
-		"27017": true, // MongoDB
-		"9200":  true, // Elasticsearch
-		"11211": true, // Memcached
-		"2375":  true, // Docker API
-		"2376":  true, // Docker API TLS
+type portInfo struct {
+	name        string
+	severity    audit.Severity
+	remediation string
+}
+
+var knownPorts = map[string]portInfo{
+	// Kubernetes
+	"6443":  {name: "Kubernetes API server", severity: audit.SeverityWarn, remediation: "Restrict access to the API server via VPN or firewall rules"},
+	"10250": {name: "Kubelet API", severity: audit.SeverityWarn, remediation: "Kubelet should not be publicly accessible. Bind to internal interface or use firewall"},
+	"10251": {name: "Kubernetes scheduler", severity: audit.SeverityWarn, remediation: "Bind to internal interface"},
+	"10252": {name: "Kubernetes controller manager", severity: audit.SeverityWarn, remediation: "Bind to internal interface"},
+	"8443":  {name: "Kubernetes dashboard / HTTPS alt", severity: audit.SeverityWarn, remediation: "Verify if this needs public access. Consider VPN"},
+	"2379":  {name: "etcd", severity: audit.SeverityFail, remediation: "etcd must not be publicly accessible. Bind to 127.0.0.1"},
+	"2380":  {name: "etcd peer", severity: audit.SeverityFail, remediation: "etcd peer port must not be publicly accessible"},
+	// DNS
+	"53": {name: "DNS (CoreDNS/dnsmasq)", severity: audit.SeverityInfo, remediation: "DNS is commonly exposed. Verify this is intentional"},
+	// Monitoring
+	"9090":  {name: "Prometheus", severity: audit.SeverityWarn, remediation: "Prometheus should be behind VPN or authentication"},
+	"9100":  {name: "Prometheus node-exporter", severity: audit.SeverityWarn, remediation: "Node-exporter exposes system metrics. Restrict to internal network"},
+	"3000":  {name: "Grafana", severity: audit.SeverityWarn, remediation: "Grafana should be behind VPN or have authentication enabled"},
+	"9093":  {name: "Alertmanager", severity: audit.SeverityWarn, remediation: "Alertmanager should be behind VPN"},
+	// Databases (high risk)
+	"3306":  {name: "MySQL", severity: audit.SeverityFail, remediation: "Bind MySQL to 127.0.0.1 or use firewall rules"},
+	"5432":  {name: "PostgreSQL", severity: audit.SeverityFail, remediation: "Bind PostgreSQL to 127.0.0.1 or use firewall rules"},
+	"6379":  {name: "Redis", severity: audit.SeverityFail, remediation: "Bind Redis to 127.0.0.1 or use firewall rules"},
+	"27017": {name: "MongoDB", severity: audit.SeverityFail, remediation: "Bind MongoDB to 127.0.0.1 or use firewall rules"},
+	"9200":  {name: "Elasticsearch", severity: audit.SeverityFail, remediation: "Elasticsearch must not be publicly accessible"},
+	"11211": {name: "Memcached", severity: audit.SeverityFail, remediation: "Memcached must not be publicly accessible"},
+	// Docker
+	"2375": {name: "Docker API (unencrypted)", severity: audit.SeverityCritical, remediation: "Docker API without TLS is extremely dangerous. Disable immediately"},
+	"2376": {name: "Docker API (TLS)", severity: audit.SeverityFail, remediation: "Docker API should not be publicly accessible even with TLS"},
+}
+
+func classifyPort(port string) (audit.Severity, string, string) {
+	if info, ok := knownPorts[port]; ok {
+		return info.severity, fmt.Sprintf("%s exposed (port %s)", info.name, port), info.remediation
 	}
-	return highRisk[port]
+	return audit.SeverityWarn,
+		fmt.Sprintf("Unknown service exposed on port %s", port),
+		fmt.Sprintf("Verify if port %s needs to be publicly accessible. Consider binding to 127.0.0.1 or using a VPN.", port)
 }

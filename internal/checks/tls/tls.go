@@ -44,6 +44,9 @@ func findCertificates(ctx context.Context, col collector.Collector) []string {
 		"/etc/ssl/certs/ssl-cert-snakeoil.pem",
 		"/etc/nginx/ssl/*.pem",
 		"/etc/ssl/private/*.crt",
+		"/var/lib/rancher/k3s/server/tls/serving-kube-apiserver.crt",
+		"/var/lib/rancher/k3s/server/tls/server-ca.crt",
+		"/etc/kubernetes/pki/apiserver.crt",
 	}
 
 	var found []string
@@ -118,16 +121,19 @@ func checkCertificate(ctx context.Context, col collector.Collector, certPath str
 		}
 	}
 
-	// Check key size
-	out, err = col.Exec(ctx, fmt.Sprintf("openssl x509 -in %q -noout -text 2>/dev/null | grep 'Public-Key'", certPath))
+	// Check key size (RSA needs >= 2048, ECDSA >= 256)
+	out, err = col.Exec(ctx, fmt.Sprintf("openssl x509 -in %q -noout -text 2>/dev/null | grep -E 'Public-Key|ASN1 OID'", certPath))
 	if err == nil {
 		keyInfo := strings.TrimSpace(string(out))
-		if size := extractKeySize(keyInfo); size > 0 && size < 2048 {
+		isEC := strings.Contains(keyInfo, "id-ecPublicKey") || strings.Contains(keyInfo, "prime256v1") || strings.Contains(keyInfo, "secp384r1") || strings.Contains(keyInfo, "secp521r1")
+		size := extractKeySize(keyInfo)
+
+		if size > 0 && !isEC && size < 2048 {
 			findings = append(findings, audit.Finding{
 				ID:          fmt.Sprintf("tls-weak-key-%s", sanitizePath(certPath)),
 				CheckID:     "tls",
 				Severity:    audit.SeverityFail,
-				Title:       fmt.Sprintf("Weak key size (%d bit): %s", size, certPath),
+				Title:       fmt.Sprintf("Weak RSA key size (%d bit): %s", size, certPath),
 				Evidence:    keyInfo,
 				Remediation: "Use at least 2048-bit RSA or 256-bit ECDSA",
 			})
