@@ -1,0 +1,67 @@
+name: "Siovos Audit"
+description: "Run a security audit on your server and get a score"
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  host:
+    description: "Target host"
+    required: true
+  user:
+    description: "SSH user"
+    required: true
+  key:
+    description: "SSH private key (contents, not path)"
+    required: true
+  port:
+    description: "SSH port"
+    default: "22"
+  checks:
+    description: "Comma-separated list of checks (default: all)"
+    default: ""
+  format:
+    description: "Output format: terminal, json, html"
+    default: "terminal"
+  min-score:
+    description: "Minimum acceptable score (fails if below)"
+    default: "0"
+  version:
+    description: "Siovos Audit version to install"
+    default: "latest"
+
+runs:
+  using: composite
+  steps:
+    - name: Install siovos-audit
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          go install github.com/Siovos/siovos-audit/cmd/siovos-audit@latest
+        else
+          go install github.com/Siovos/siovos-audit/cmd/siovos-audit@${{ inputs.version }}
+        fi
+
+    - name: Setup SSH key
+      shell: bash
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ inputs.key }}" > ~/.ssh/siovos_audit_key
+        chmod 600 ~/.ssh/siovos_audit_key
+
+    - name: Run audit
+      shell: bash
+      run: |
+        ARGS="--host ${{ inputs.host }} --user ${{ inputs.user }} --key ~/.ssh/siovos_audit_key --port ${{ inputs.port }} --format ${{ inputs.format }}"
+        if [ -n "${{ inputs.checks }}" ]; then
+          ARGS="$ARGS --checks ${{ inputs.checks }}"
+        fi
+        if [ "${{ inputs.min-score }}" != "0" ]; then
+          ARGS="$ARGS --min-score ${{ inputs.min-score }}"
+        fi
+        siovos-audit run $ARGS
+
+    - name: Cleanup
+      shell: bash
+      if: always()
+      run: rm -f ~/.ssh/siovos_audit_key

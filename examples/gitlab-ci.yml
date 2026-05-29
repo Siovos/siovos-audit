@@ -1,0 +1,23 @@
+# GitLab CI template for Siovos Audit
+# Add this to your .gitlab-ci.yml or include it as a template.
+#
+# Required CI/CD variables:
+#   SERVER_HOST - Target server IP or hostname
+#   SERVER_USER - SSH user
+#   SSH_PRIVATE_KEY - SSH private key (file type variable)
+
+security-audit:
+  stage: test
+  image: golang:1.22
+  before_script:
+    - go install github.com/Siovos/siovos-audit/cmd/siovos-audit@latest
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+  script:
+    - siovos-audit run --host "$SERVER_HOST" --user "$SERVER_USER" --key ~/.ssh/id_ed25519 --format json --min-score 70
+  after_script:
+    - rm -f ~/.ssh/id_ed25519
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
