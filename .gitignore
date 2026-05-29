@@ -1,0 +1,33 @@
+# Binaries
+/siovos-audit
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build
+/dist/
+/bin/
+
+# Test
+*.test
+*.out
+coverage.html
+
+# Go
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reports (generated)
+siovos-audit-report-*.json
+siovos-audit-report-*.html
