@@ -18,9 +18,8 @@ func (c *Check) Name() string     { return "Kubernetes" }
 func (c *Check) Category() string { return "kubernetes" }
 
 func (c *Check) Run(ctx context.Context, col collector.Collector) ([]audit.Finding, error) {
-	// Detect if K8s is present
-	out, err := col.Exec(ctx, "kubectl version --client=false --short 2>/dev/null || k3s kubectl version --short 2>/dev/null")
-	if err != nil || strings.TrimSpace(string(out)) == "" {
+	kubecmd := detectKubectl(ctx, col)
+	if kubecmd == "" {
 		return []audit.Finding{{
 			ID:       "k8s-not-found",
 			CheckID:  "kubernetes",
@@ -30,17 +29,45 @@ func (c *Check) Run(ctx context.Context, col collector.Collector) ([]audit.Findi
 	}
 
 	var findings []audit.Finding
-	findings = append(findings, checkRBAC(ctx, col)...)
-	findings = append(findings, checkNetworkPolicies(ctx, col)...)
+	findings = append(findings, checkRBAC(ctx, col, kubecmd)...)
+	findings = append(findings, checkNetworkPolicies(ctx, col, kubecmd)...)
 	findings = append(findings, checkSecretsEncryption(ctx, col)...)
 	findings = append(findings, checkAPIServerExposure(ctx, col)...)
-	findings = append(findings, checkPodsRunningAsRoot(ctx, col)...)
+	findings = append(findings, checkPodsRunningAsRoot(ctx, col, kubecmd)...)
 
 	return findings, nil
 }
 
-func checkRBAC(ctx context.Context, col collector.Collector) []audit.Finding {
-	out, err := col.Exec(ctx, "kubectl api-versions 2>/dev/null")
+func detectKubectl(ctx context.Context, col collector.Collector) string {
+	// Try kubectl first
+	out, err := col.Exec(ctx, "kubectl version --client 2>/dev/null")
+	if err == nil && strings.Contains(string(out), "Client Version") {
+		return "kubectl"
+	}
+
+	// Try k3s kubectl
+	out, err = col.Exec(ctx, "k3s kubectl version --client 2>/dev/null")
+	if err == nil && strings.Contains(string(out), "Client Version") {
+		return "k3s kubectl"
+	}
+
+	// Try via absolute path
+	out, err = col.Exec(ctx, "/usr/local/bin/k3s kubectl version --client 2>/dev/null")
+	if err == nil && strings.Contains(string(out), "Client Version") {
+		return "/usr/local/bin/k3s kubectl"
+	}
+
+	// Detect by presence of K3s/K8s files
+	out, err = col.Exec(ctx, "test -f /etc/rancher/k3s/k3s.yaml && echo found 2>/dev/null")
+	if err == nil && strings.Contains(string(out), "found") {
+		return "k3s kubectl"
+	}
+
+	return ""
+}
+
+func checkRBAC(ctx context.Context, col collector.Collector, kubecmd string) []audit.Finding {
+	out, err := col.Exec(ctx, kubecmd+" api-versions 2>/dev/null")
 	if err != nil {
 		return nil
 	}
@@ -64,8 +91,8 @@ func checkRBAC(ctx context.Context, col collector.Collector) []audit.Finding {
 	}}
 }
 
-func checkNetworkPolicies(ctx context.Context, col collector.Collector) []audit.Finding {
-	out, err := col.Exec(ctx, "kubectl get networkpolicies --all-namespaces --no-headers 2>/dev/null")
+func checkNetworkPolicies(ctx context.Context, col collector.Collector, kubecmd string) []audit.Finding {
+	out, err := col.Exec(ctx, kubecmd+" get networkpolicies --all-namespaces --no-headers 2>/dev/null")
 	if err != nil {
 		return nil
 	}
@@ -86,16 +113,16 @@ func checkNetworkPolicies(ctx context.Context, col collector.Collector) []audit.
 		ID:       "k8s-network-policies",
 		CheckID:  "kubernetes",
 		Severity: audit.SeverityPass,
-		Title:    "Network policies defined",
+		Title:    fmt.Sprintf("Network policies defined (%d)", len(lines)),
 		Evidence: strings.TrimSpace(string(out)),
 	}}
 }
 
 func checkSecretsEncryption(ctx context.Context, col collector.Collector) []audit.Finding {
-	// Check if encryption config exists (common paths)
 	paths := []string{
 		"/etc/kubernetes/encryption-config.yaml",
 		"/var/lib/rancher/k3s/server/cred/encryption-config.json",
+		"/var/lib/rancher/k3s/server/cred/encryption-state.json",
 	}
 
 	for _, path := range paths {
@@ -146,8 +173,8 @@ func checkAPIServerExposure(ctx context.Context, col collector.Collector) []audi
 	}}
 }
 
-func checkPodsRunningAsRoot(ctx context.Context, col collector.Collector) []audit.Finding {
-	out, err := col.Exec(ctx, `kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\t"}{range .spec.containers[*]}{.securityContext.runAsUser}{"\t"}{end}{"\n"}{end}' 2>/dev/null`)
+func checkPodsRunningAsRoot(ctx context.Context, col collector.Collector, kubecmd string) []audit.Finding {
+	out, err := col.Exec(ctx, kubecmd+` get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\t"}{range .spec.containers[*]}{.securityContext.runAsUser}{"\t"}{end}{"\n"}{end}' 2>/dev/null`)
 	if err != nil {
 		return nil
 	}

@@ -135,11 +135,12 @@ func checkOpenPorts(ctx context.Context, col collector.Collector) []audit.Findin
 		if commonPorts[port] {
 			continue
 		}
+		name := identifyPort(port)
 		findings = append(findings, audit.Finding{
 			ID:       fmt.Sprintf("firewall-open-port-%s", port),
 			CheckID:  "firewall",
 			Severity: audit.SeverityWarn,
-			Title:    fmt.Sprintf("Port %s open - verify if intentional", port),
+			Title:    fmt.Sprintf("Port %s open%s - verify if intentional", port, name),
 			Evidence: fmt.Sprintf("Port %s is listening on a public interface", port),
 		})
 	}
@@ -154,4 +155,30 @@ func checkOpenPorts(ctx context.Context, col collector.Collector) []audit.Findin
 	}
 
 	return findings
+}
+
+var portNames = map[string]string{
+	"53":    "DNS",
+	"6443":  "Kubernetes API",
+	"8443":  "HTTPS alt / K8s dashboard",
+	"10250": "Kubelet",
+	"10251": "K8s scheduler",
+	"10252": "K8s controller",
+	"9090":  "Prometheus",
+	"9100":  "Node exporter",
+	"3000":  "Grafana",
+	"5432":  "PostgreSQL",
+	"3306":  "MySQL",
+	"6379":  "Redis",
+	"27017": "MongoDB",
+	"2375":  "Docker API",
+	"2376":  "Docker API TLS",
+	"9200":  "Elasticsearch",
+}
+
+func identifyPort(port string) string {
+	if name, ok := portNames[port]; ok {
+		return " (" + name + ")"
+	}
+	return ""
 }
