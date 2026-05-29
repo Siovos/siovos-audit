@@ -14,9 +14,13 @@ import (
 	"github.com/Siovos/siovos-audit/pkg/scoring"
 
 	"github.com/Siovos/siovos-audit/internal/checks/firewall"
+	"github.com/Siovos/siovos-audit/internal/checks/kubernetes"
+	"github.com/Siovos/siovos-audit/internal/checks/network"
 	"github.com/Siovos/siovos-audit/internal/checks/services"
 	checkssh "github.com/Siovos/siovos-audit/internal/checks/ssh"
+	"github.com/Siovos/siovos-audit/internal/checks/system"
 	"github.com/Siovos/siovos-audit/internal/checks/tls"
+	"github.com/Siovos/siovos-audit/internal/checks/vpn"
 )
 
 type runFlags struct {
@@ -28,6 +32,7 @@ type runFlags struct {
 	checks   string
 	format   string
 	minScore int
+	config   string
 }
 
 func newRunCmd() *cobra.Command {
@@ -47,8 +52,9 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&f.keyPath, "key", "", "Path to SSH private key")
 	cmd.Flags().BoolVar(&f.local, "local", false, "Audit the local machine")
 	cmd.Flags().StringVar(&f.checks, "checks", "", "Comma-separated list of checks to run (e.g. ssh,firewall,tls)")
-	cmd.Flags().StringVar(&f.format, "format", "terminal", "Output format: terminal, json")
+	cmd.Flags().StringVar(&f.format, "format", "terminal", "Output format: terminal, json, html")
 	cmd.Flags().IntVar(&f.minScore, "min-score", 0, "Minimum acceptable score (exit code 1 if below)")
+	cmd.Flags().StringVar(&f.config, "config", ".siovos-audit.yml", "Path to config file")
 
 	return cmd
 }
@@ -65,6 +71,10 @@ func runAudit(ctx context.Context, f *runFlags) error {
 	registry.Register(firewall.New())
 	registry.Register(tls.New())
 	registry.Register(services.New())
+	registry.Register(kubernetes.New())
+	registry.Register(vpn.New())
+	registry.Register(system.New())
+	registry.Register(network.New())
 
 	scorer := scoring.NewDefaultScorer()
 	engine := audit.NewEngine(registry, scorer)
@@ -78,6 +88,13 @@ func runAudit(ctx context.Context, f *runFlags) error {
 	if err != nil {
 		return err
 	}
+
+	cfg, err := audit.LoadConfig(f.config)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	result.Findings = cfg.FilterFindings(result.Findings)
+	result.Score = scorer.Score(result.Findings)
 
 	rep, err := createReporter(f.format)
 	if err != nil {
@@ -116,6 +133,8 @@ func createReporter(format string) (reporter.Reporter, error) {
 		return reporter.NewTerminalReporter(), nil
 	case "json":
 		return reporter.NewJSONReporter(true), nil
+	case "html":
+		return reporter.NewHTMLReporter(), nil
 	default:
 		return nil, fmt.Errorf("unknown format: %s", format)
 	}
