@@ -24,6 +24,18 @@ siovos-audit run --host 192.168.1.100 --user root --format json
 
 # Fail if score is below threshold
 siovos-audit run --host 192.168.1.100 --user root --min-score 80
+
+# Save result to history
+siovos-audit run --host 192.168.1.100 --user root --save
+
+# Compare two servers
+siovos-audit compare --host1 server-a.com --host2 server-b.com --user root
+
+# View audit history
+siovos-audit history
+
+# HTML report
+siovos-audit run --host 192.168.1.100 --user root --format html > report.html
 ```
 
 ## Example output
@@ -64,6 +76,10 @@ siovos-audit run --host 192.168.1.100 --user root --min-score 80
 | **Firewall** | UFW/iptables active, default deny policy, unexpected open ports |
 | **TLS** | Certificate validity, expiration, signature algorithm, key size |
 | **Services** | Publicly exposed services, high-risk ports (databases, Docker API) |
+| **Kubernetes** | RBAC, network policies, secrets encryption, API server exposure, pods as root |
+| **VPN** | WireGuard interfaces, config permissions, peer handshakes |
+| **System** | Security updates, unattended-upgrades, file permissions, kernel hardening |
+| **Network** | DNS configuration, IPv6 status, listening services |
 
 ## Why this tool
 
@@ -96,8 +112,10 @@ siovos-audit/
 │   ├── audit/            # Core types: Engine, Check, Finding, Registry, Scorer
 │   ├── collector/        # Transport abstraction: SSH, local
 │   ├── scoring/          # Score calculation
-│   └── reporter/         # Output: terminal, JSON
-└── internal/checks/      # Check implementations: ssh, firewall, tls, services
+│   ├── reporter/         # Output: terminal, JSON, HTML
+│   ├── store/            # Result persistence (file-based)
+│   └── plugin/           # External check plugin system
+└── internal/checks/      # Check implementations (8 checks)
 ```
 
 Checks use the `Collector` interface and never depend on the transport method. Adding a new check means implementing the `Check` interface and registering it.
@@ -112,17 +130,18 @@ Checks use the `Collector` interface and never depend on the transport method. A
 ## Roadmap
 
 - [x] SSH, firewall, TLS, exposed services checks
+- [x] Kubernetes, VPN, system, network checks
 - [x] Scoring system (per-category + overall)
-- [x] Terminal and JSON output
+- [x] Terminal, JSON, and HTML output
 - [x] Local audit mode
-- [ ] Kubernetes checks (RBAC, network policies, secrets)
-- [ ] VPN audit (WireGuard)
-- [ ] System audit (updates, kernel, permissions)
-- [ ] HTML reports
-- [ ] CI/CD integration (GitHub Actions, GitLab CI)
-- [ ] Server comparison mode
-- [ ] Plugin system for custom checks
+- [x] CI/CD integration (GitHub Action + GitLab CI template)
+- [x] Server comparison mode
+- [x] Audit history with `--save`
+- [x] Plugin system for custom checks
+- [x] Config file to suppress false positives
 - [ ] Web dashboard
+- [ ] Scheduled audits
+- [ ] Compliance templates (SOC2, ISO 27001)
 
 ## Contributing
 

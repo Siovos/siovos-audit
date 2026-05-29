@@ -1,0 +1,25 @@
+# GitHub Actions example for Siovos Audit
+# Add this as a workflow in .github/workflows/
+
+name: Security Audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Every Monday at 6am
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - uses: Siovos/siovos-audit@main
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          user: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          min-score: 80
+          format: terminal

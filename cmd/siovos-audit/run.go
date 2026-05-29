@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -12,15 +13,7 @@ import (
 	"github.com/Siovos/siovos-audit/pkg/collector"
 	"github.com/Siovos/siovos-audit/pkg/reporter"
 	"github.com/Siovos/siovos-audit/pkg/scoring"
-
-	"github.com/Siovos/siovos-audit/internal/checks/firewall"
-	"github.com/Siovos/siovos-audit/internal/checks/kubernetes"
-	"github.com/Siovos/siovos-audit/internal/checks/network"
-	"github.com/Siovos/siovos-audit/internal/checks/services"
-	checkssh "github.com/Siovos/siovos-audit/internal/checks/ssh"
-	"github.com/Siovos/siovos-audit/internal/checks/system"
-	"github.com/Siovos/siovos-audit/internal/checks/tls"
-	"github.com/Siovos/siovos-audit/internal/checks/vpn"
+	"github.com/Siovos/siovos-audit/pkg/store"
 )
 
 type runFlags struct {
@@ -33,6 +26,7 @@ type runFlags struct {
 	format   string
 	minScore int
 	config   string
+	save     bool
 }
 
 func newRunCmd() *cobra.Command {
@@ -55,6 +49,7 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&f.format, "format", "terminal", "Output format: terminal, json, html")
 	cmd.Flags().IntVar(&f.minScore, "min-score", 0, "Minimum acceptable score (exit code 1 if below)")
 	cmd.Flags().StringVar(&f.config, "config", ".siovos-audit.yml", "Path to config file")
+	cmd.Flags().BoolVar(&f.save, "save", false, "Save result to history")
 
 	return cmd
 }
@@ -66,16 +61,7 @@ func runAudit(ctx context.Context, f *runFlags) error {
 	}
 	defer col.Close()
 
-	registry := audit.NewRegistry()
-	registry.Register(checkssh.New())
-	registry.Register(firewall.New())
-	registry.Register(tls.New())
-	registry.Register(services.New())
-	registry.Register(kubernetes.New())
-	registry.Register(vpn.New())
-	registry.Register(system.New())
-	registry.Register(network.New())
-
+	registry := defaultRegistry()
 	scorer := scoring.NewDefaultScorer()
 	engine := audit.NewEngine(registry, scorer)
 
@@ -103,6 +89,14 @@ func runAudit(ctx context.Context, f *runFlags) error {
 
 	if err := rep.Report(result, os.Stdout); err != nil {
 		return err
+	}
+
+	if f.save {
+		home, _ := os.UserHomeDir()
+		dir := filepath.Join(home, ".siovos-audit", "history")
+		if s, err := store.NewFileStore(dir); err == nil {
+			_ = s.Save(result)
+		}
 	}
 
 	if f.minScore > 0 && result.Score.Overall < f.minScore {

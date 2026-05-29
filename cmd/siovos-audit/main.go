@@ -20,6 +20,8 @@ func main() {
 	}
 
 	root.AddCommand(newRunCmd())
+	root.AddCommand(newCompareCmd())
+	root.AddCommand(newHistoryCmd())
 	root.AddCommand(newVersionCmd())
 
 	if err := root.Execute(); err != nil {
