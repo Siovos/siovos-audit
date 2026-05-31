@@ -31,11 +31,11 @@ func checkUFWStatus(ctx context.Context, col collector.Collector) []audit.Findin
 	out, err := col.Exec(ctx, "ufw status 2>/dev/null || iptables -L -n 2>/dev/null | head -5")
 	if err != nil {
 		return []audit.Finding{{
-			ID:       "firewall-active",
-			CheckID:  "firewall",
-			Severity: audit.SeverityFail,
-			Title:    "No firewall detected",
-			Evidence: err.Error(),
+			ID:          "firewall-active",
+			CheckID:     "firewall",
+			Severity:    audit.SeverityFail,
+			Title:       "No firewall detected",
+			Evidence:    err.Error(),
 			Remediation: "Install and enable UFW: apt install ufw && ufw enable",
 		}}
 	}
@@ -103,6 +103,8 @@ func checkDefaultPolicy(ctx context.Context, col collector.Collector) []audit.Fi
 }
 
 func checkOpenPorts(ctx context.Context, col collector.Collector) []audit.Finding {
+	facts := audit.GetFacts(ctx)
+
 	out, err := col.Exec(ctx, "ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null")
 	if err != nil {
 		return nil
@@ -135,13 +137,26 @@ func checkOpenPorts(ctx context.Context, col collector.Collector) []audit.Findin
 		if commonPorts[port] {
 			continue
 		}
+
+		// Use Facts to determine if port is truly public
+		if facts != nil && !facts.IsPortPublic(port) {
+			findings = append(findings, audit.Finding{
+				ID:       fmt.Sprintf("firewall-open-port-%s", port),
+				CheckID:  "firewall",
+				Severity: audit.SeverityPass,
+				Title:    fmt.Sprintf("Port %s%s listening but blocked by firewall", port, identifyPort(port)),
+				Evidence: fmt.Sprintf("Port %s is listening but UFW has no public allow rule", port),
+			})
+			continue
+		}
+
 		name := identifyPort(port)
 		findings = append(findings, audit.Finding{
 			ID:       fmt.Sprintf("firewall-open-port-%s", port),
 			CheckID:  "firewall",
 			Severity: audit.SeverityWarn,
-			Title:    fmt.Sprintf("Port %s open%s - verify if intentional", port, name),
-			Evidence: fmt.Sprintf("Port %s is listening on a public interface", port),
+			Title:    fmt.Sprintf("Port %s open%s - publicly accessible", port, name),
+			Evidence: fmt.Sprintf("Port %s is listening and allowed through firewall", port),
 		})
 	}
 

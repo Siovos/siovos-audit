@@ -29,18 +29,22 @@ func NewEngine(registry *Registry, scorer Scorer) *Engine {
 }
 
 // Run executes the selected checks (or all if checkIDs is empty) and returns the audit result.
+// It wraps the collector with a cache and gathers shared facts before running checks.
 func (e *Engine) Run(ctx context.Context, col collector.Collector, checkIDs []string) (*AuditResult, error) {
 	checks := e.registry.Filter(checkIDs)
 	if len(checks) == 0 {
 		return nil, fmt.Errorf("no checks to run")
 	}
 
+	// Wrap collector with cache — identical commands are executed only once
+	cached := collector.NewCachedCollector(col)
+
 	result := &AuditResult{
-		Target:    col.Target(),
+		Target:    cached.Target(),
 		StartedAt: time.Now(),
 	}
 
-	platform := col.Platform()
+	platform := cached.Platform()
 	result.Platform = PlatformInfo{
 		OS:     platform.OS,
 		Arch:   platform.Arch,
@@ -48,8 +52,13 @@ func (e *Engine) Run(ctx context.Context, col collector.Collector, checkIDs []st
 		Kernel: platform.Kernel,
 	}
 
+	// Gather shared facts (firewall rules, ports, users, services)
+	// Available to all checks via context
+	facts := GatherFacts(ctx, cached)
+	ctx = WithFacts(ctx, facts)
+
 	for _, check := range checks {
-		findings, err := check.Run(ctx, col)
+		findings, err := check.Run(ctx, cached)
 		if err != nil {
 			result.Findings = append(result.Findings, Finding{
 				ID:       check.ID() + "-error",

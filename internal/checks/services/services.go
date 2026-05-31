@@ -64,11 +64,19 @@ func checkListeningServices(ctx context.Context, col collector.Collector) []audi
 		}
 	}
 
+	// Use shared Facts to determine if ports are truly publicly accessible
+	facts := audit.GetFacts(ctx)
+
 	var findings []audit.Finding
 	expectedPorts := map[string]bool{"22": true, "80": true, "443": true}
 
 	for _, svc := range publicServices {
 		if expectedPorts[svc.port] {
+			continue
+		}
+
+		// If Facts are available and port is NOT publicly allowed, skip it
+		if facts != nil && !facts.IsPortPublic(svc.port) {
 			continue
 		}
 
@@ -193,3 +201,4 @@ func classifyPort(port string) (audit.Severity, string, string) {
 		fmt.Sprintf("Unknown service exposed on port %s", port),
 		fmt.Sprintf("Verify if port %s needs to be publicly accessible. Consider binding to 127.0.0.1 or using a VPN.", port)
 }
+
