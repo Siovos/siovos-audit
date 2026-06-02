@@ -72,7 +72,7 @@ func checkGitExposed(ctx context.Context, col collector.Collector) []audit.Findi
 				CheckID:     "secrets",
 				Severity:    audit.SeverityCritical,
 				Title:       fmt.Sprintf(".git directory in webroot: %s", root),
-				Remediation: fmt.Sprintf("Remove .git from webroot or deny access in web server config:\n  location ~ /\\.git { deny all; }"),
+				Remediation: "Remove .git from webroot or deny access in web server config:\n  location ~ /\\.git { deny all; }",
 			})
 		}
 	}
