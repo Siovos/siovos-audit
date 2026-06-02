@@ -23,6 +23,8 @@ func (c *Check) Run(ctx context.Context, col collector.Collector) ([]audit.Findi
 	findings = append(findings, checkUFWStatus(ctx, col)...)
 	findings = append(findings, checkDefaultPolicy(ctx, col)...)
 	findings = append(findings, checkOpenPorts(ctx, col)...)
+	findings = append(findings, checkFail2ban(ctx, col)...)
+	findings = append(findings, checkFirewallLogging(ctx, col)...)
 
 	return findings, nil
 }
@@ -196,4 +198,60 @@ func identifyPort(port string) string {
 		return " (" + name + ")"
 	}
 	return ""
+}
+
+func checkFail2ban(ctx context.Context, col collector.Collector) []audit.Finding {
+	// Cross-reference with Facts: if password auth is disabled, fail2ban SSH is unnecessary
+	facts := audit.GetFacts(ctx)
+
+	out, err := col.Exec(ctx, "systemctl is-active fail2ban 2>/dev/null")
+	if err == nil && strings.Contains(string(out), "active") {
+		// Check jails
+		jails, _ := col.Exec(ctx, "fail2ban-client status 2>/dev/null | grep 'Jail list'")
+		return []audit.Finding{{
+			ID: "firewall-fail2ban", CheckID: "firewall",
+			Severity: audit.SeverityPass,
+			Title:    "fail2ban active",
+			Evidence: strings.TrimSpace(string(jails)),
+		}}
+	}
+
+	// Check if password auth is disabled — if so, fail2ban SSH is less critical
+	sshConfig, err := col.ReadFile(ctx, "/etc/ssh/sshd_config")
+	if err == nil && strings.Contains(string(sshConfig), "PasswordAuthentication no") {
+		_ = facts // suppress unused warning
+		return []audit.Finding{{
+			ID: "firewall-fail2ban", CheckID: "firewall",
+			Severity: audit.SeverityInfo,
+			Title:    "fail2ban not installed (password auth disabled, lower risk)",
+		}}
+	}
+
+	return []audit.Finding{{
+		ID: "firewall-fail2ban", CheckID: "firewall",
+		Severity:    audit.SeverityWarn,
+		Title:       "fail2ban not active",
+		Remediation: "Install fail2ban: apt install fail2ban",
+	}}
+}
+
+func checkFirewallLogging(ctx context.Context, col collector.Collector) []audit.Finding {
+	out, err := col.Exec(ctx, "ufw status verbose 2>/dev/null | grep -i logging")
+	if err != nil {
+		return nil
+	}
+	output := strings.TrimSpace(string(out))
+	if strings.Contains(strings.ToLower(output), "logging: on") {
+		return []audit.Finding{{
+			ID: "firewall-logging", CheckID: "firewall",
+			Severity: audit.SeverityPass,
+			Title:    "Firewall logging enabled",
+		}}
+	}
+	return []audit.Finding{{
+		ID: "firewall-logging", CheckID: "firewall",
+		Severity:    audit.SeverityWarn,
+		Title:       "Firewall logging disabled",
+		Remediation: "Enable: ufw logging on",
+	}}
 }
