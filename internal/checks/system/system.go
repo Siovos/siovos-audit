@@ -24,6 +24,10 @@ func (c *Check) Run(ctx context.Context, col collector.Collector) ([]audit.Findi
 	findings = append(findings, checkUnattendedUpgrades(ctx, col)...)
 	findings = append(findings, checkSensitivePermissions(ctx, col)...)
 	findings = append(findings, checkKernelHardening(ctx, col)...)
+	findings = append(findings, checkCoreDumps(ctx, col)...)
+	findings = append(findings, checkMountOptions(ctx, col)...)
+	findings = append(findings, checkUmask(ctx, col)...)
+	findings = append(findings, checkMACFramework(ctx, col)...)
 
 	return findings, nil
 }
@@ -182,6 +186,121 @@ func checkKernelHardening(ctx context.Context, col collector.Collector) []audit.
 	}
 
 	return findings
+}
+
+func checkCoreDumps(ctx context.Context, col collector.Collector) []audit.Finding {
+	out, err := col.Exec(ctx, "sysctl -n fs.suid_dumpable 2>/dev/null")
+	if err != nil {
+		return nil
+	}
+	val := strings.TrimSpace(string(out))
+	if val == "0" {
+		return []audit.Finding{{
+			ID: "system-core-dumps", CheckID: "system",
+			Severity: audit.SeverityPass,
+			Title:    "Core dumps disabled for SUID binaries",
+		}}
+	}
+	return []audit.Finding{{
+		ID: "system-core-dumps", CheckID: "system",
+		Severity:    audit.SeverityWarn,
+		Title:       "Core dumps enabled for SUID binaries",
+		Remediation: "Set fs.suid_dumpable = 0 in /etc/sysctl.conf",
+		References:  []string{"CIS 1.5.1"},
+	}}
+}
+
+func checkMountOptions(ctx context.Context, col collector.Collector) []audit.Finding {
+	out, err := col.Exec(ctx, "mount | grep ' /tmp '")
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return []audit.Finding{{
+			ID: "system-tmp-partition", CheckID: "system",
+			Severity: audit.SeverityInfo,
+			Title:    "/tmp not a separate partition",
+		}}
+	}
+
+	var findings []audit.Finding
+	mountLine := string(out)
+	findings = append(findings, audit.Finding{
+		ID: "system-tmp-partition", CheckID: "system",
+		Severity: audit.SeverityPass,
+		Title:    "/tmp is a separate mount",
+	})
+
+	if !strings.Contains(mountLine, "noexec") {
+		findings = append(findings, audit.Finding{
+			ID: "system-tmp-noexec", CheckID: "system",
+			Severity:    audit.SeverityWarn,
+			Title:       "/tmp not mounted with noexec",
+			Remediation: "Add noexec to /tmp mount options in /etc/fstab",
+			References:  []string{"CIS 1.1.4"},
+		})
+	}
+	if !strings.Contains(mountLine, "nosuid") {
+		findings = append(findings, audit.Finding{
+			ID: "system-tmp-nosuid", CheckID: "system",
+			Severity:    audit.SeverityWarn,
+			Title:       "/tmp not mounted with nosuid",
+			Remediation: "Add nosuid to /tmp mount options in /etc/fstab",
+			References:  []string{"CIS 1.1.5"},
+		})
+	}
+
+	return findings
+}
+
+func checkUmask(ctx context.Context, col collector.Collector) []audit.Finding {
+	out, err := col.Exec(ctx, "grep -E '^\\s*UMASK' /etc/login.defs 2>/dev/null")
+	if err != nil {
+		return nil
+	}
+	line := strings.TrimSpace(string(out))
+	if strings.Contains(line, "027") || strings.Contains(line, "077") {
+		return []audit.Finding{{
+			ID: "system-umask", CheckID: "system",
+			Severity: audit.SeverityPass,
+			Title:    "Default umask is restrictive: " + line,
+		}}
+	}
+	return []audit.Finding{{
+		ID: "system-umask", CheckID: "system",
+		Severity:    audit.SeverityWarn,
+		Title:       "Default umask not restrictive: " + line,
+		Remediation: "Set UMASK 027 in /etc/login.defs",
+		References:  []string{"CIS 5.5.5"},
+	}}
+}
+
+func checkMACFramework(ctx context.Context, col collector.Collector) []audit.Finding {
+	// Check AppArmor
+	out, err := col.Exec(ctx, "aa-status --enabled 2>/dev/null && echo enabled")
+	if err == nil && strings.Contains(string(out), "enabled") {
+		return []audit.Finding{{
+			ID: "system-mac", CheckID: "system",
+			Severity: audit.SeverityPass,
+			Title:    "AppArmor enabled",
+		}}
+	}
+	// Check SELinux
+	out, err = col.Exec(ctx, "getenforce 2>/dev/null")
+	if err == nil {
+		mode := strings.TrimSpace(string(out))
+		if mode == "Enforcing" || mode == "Permissive" {
+			return []audit.Finding{{
+				ID: "system-mac", CheckID: "system",
+				Severity: audit.SeverityPass,
+				Title:    "SELinux " + mode,
+			}}
+		}
+	}
+	return []audit.Finding{{
+		ID: "system-mac", CheckID: "system",
+		Severity:    audit.SeverityWarn,
+		Title:       "No MAC framework (AppArmor/SELinux) active",
+		Remediation: "Enable AppArmor or SELinux",
+		References:  []string{"CIS 1.6"},
+	}}
 }
 
 func permsOK(actual, max string) bool {

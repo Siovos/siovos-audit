@@ -23,6 +23,9 @@ func (c *Check) Run(ctx context.Context, col collector.Collector) ([]audit.Findi
 	findings = append(findings, checkDNS(ctx, col)...)
 	findings = append(findings, checkIPv6(ctx, col)...)
 	findings = append(findings, checkListeningServices(ctx, col)...)
+	findings = append(findings, checkIPForwarding(ctx, col)...)
+	findings = append(findings, checkSYNCookies(ctx, col)...)
+	findings = append(findings, checkPromiscuous(ctx, col)...)
 
 	return findings, nil
 }
@@ -145,4 +148,65 @@ func checkListeningServices(ctx context.Context, col collector.Collector) []audi
 	}
 
 	return findings
+}
+
+func checkIPForwarding(ctx context.Context, col collector.Collector) []audit.Finding {
+	out, err := col.Exec(ctx, "sysctl -n net.ipv4.ip_forward 2>/dev/null")
+	if err != nil {
+		return nil
+	}
+	val := strings.TrimSpace(string(out))
+	if val == "0" {
+		return []audit.Finding{{
+			ID: "network-ip-forward", CheckID: "network",
+			Severity: audit.SeverityPass,
+			Title:    "IP forwarding disabled",
+		}}
+	}
+	// IP forwarding enabled — could be intentional (Docker, K8s, VPN)
+	return []audit.Finding{{
+		ID: "network-ip-forward", CheckID: "network",
+		Severity: audit.SeverityInfo,
+		Title:    "IP forwarding enabled (expected if running containers, K8s, or VPN)",
+		Evidence: "net.ipv4.ip_forward=1",
+	}}
+}
+
+func checkSYNCookies(ctx context.Context, col collector.Collector) []audit.Finding {
+	out, err := col.Exec(ctx, "sysctl -n net.ipv4.tcp_syncookies 2>/dev/null")
+	if err != nil {
+		return nil
+	}
+	val := strings.TrimSpace(string(out))
+	if val == "1" {
+		return []audit.Finding{{
+			ID: "network-syn-cookies", CheckID: "network",
+			Severity: audit.SeverityPass,
+			Title:    "TCP SYN cookies enabled",
+		}}
+	}
+	return []audit.Finding{{
+		ID: "network-syn-cookies", CheckID: "network",
+		Severity:    audit.SeverityWarn,
+		Title:       "TCP SYN cookies disabled",
+		Remediation: "Set net.ipv4.tcp_syncookies = 1 in /etc/sysctl.conf",
+		References:  []string{"CIS 3.3.8"},
+	}}
+}
+
+func checkPromiscuous(ctx context.Context, col collector.Collector) []audit.Finding {
+	out, err := col.Exec(ctx, "ip link show 2>/dev/null | grep PROMISC")
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return []audit.Finding{{
+			ID: "network-promiscuous", CheckID: "network",
+			Severity: audit.SeverityPass,
+			Title:    "No promiscuous interfaces",
+		}}
+	}
+	return []audit.Finding{{
+		ID: "network-promiscuous", CheckID: "network",
+		Severity: audit.SeverityWarn,
+		Title:    "Promiscuous interface detected (possible network sniffing)",
+		Evidence: strings.TrimSpace(string(out)),
+	}}
 }

@@ -12,12 +12,18 @@ import (
 	"github.com/Siovos/siovos-audit/pkg/collector"
 	"github.com/Siovos/siovos-audit/pkg/scoring"
 
+	"github.com/Siovos/siovos-audit/internal/checks/auth"
+	"github.com/Siovos/siovos-audit/internal/checks/cron"
 	"github.com/Siovos/siovos-audit/internal/checks/firewall"
+	"github.com/Siovos/siovos-audit/internal/checks/insecure"
 	"github.com/Siovos/siovos-audit/internal/checks/kubernetes"
+	"github.com/Siovos/siovos-audit/internal/checks/logging"
 	"github.com/Siovos/siovos-audit/internal/checks/network"
 	"github.com/Siovos/siovos-audit/internal/checks/services"
+	"github.com/Siovos/siovos-audit/internal/checks/shells"
 	checkssh "github.com/Siovos/siovos-audit/internal/checks/ssh"
 	"github.com/Siovos/siovos-audit/internal/checks/system"
+	checktime "github.com/Siovos/siovos-audit/internal/checks/time"
 	"github.com/Siovos/siovos-audit/internal/checks/tls"
 	"github.com/Siovos/siovos-audit/internal/checks/vpn"
 )
@@ -157,5 +163,11 @@ func defaultRegistry() *audit.Registry {
 	r.Register(vpn.New())
 	r.Register(system.New())
 	r.Register(network.New())
+	r.Register(auth.New())
+	r.Register(logging.New())
+	r.Register(cron.New())
+	r.Register(insecure.New())
+	r.Register(checktime.New())
+	r.Register(shells.New())
 	return r
 }
