@@ -130,7 +130,7 @@ func gatherInventory(ctx context.Context, col collector.Collector) *InventoryRes
 	// Packages
 	out, err := col.Exec(ctx, "dpkg -l 2>/dev/null | grep '^ii' | wc -l")
 	if err == nil {
-		fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &r.Packages.Total)
+		_, _ = fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &r.Packages.Total)
 	}
 	out, err = col.Exec(ctx, "apt-mark showmanual 2>/dev/null | head -50")
 	if err == nil && strings.TrimSpace(string(out)) != "" {
