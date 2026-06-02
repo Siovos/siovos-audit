@@ -14,18 +14,24 @@ import (
 
 	"github.com/Siovos/siovos-audit/internal/checks/auth"
 	"github.com/Siovos/siovos-audit/internal/checks/cron"
+	"github.com/Siovos/siovos-audit/internal/checks/database"
 	"github.com/Siovos/siovos-audit/internal/checks/firewall"
 	"github.com/Siovos/siovos-audit/internal/checks/insecure"
+	"github.com/Siovos/siovos-audit/internal/checks/integrity"
 	"github.com/Siovos/siovos-audit/internal/checks/kubernetes"
 	"github.com/Siovos/siovos-audit/internal/checks/logging"
+	"github.com/Siovos/siovos-audit/internal/checks/malware"
 	"github.com/Siovos/siovos-audit/internal/checks/network"
+	"github.com/Siovos/siovos-audit/internal/checks/packages"
 	"github.com/Siovos/siovos-audit/internal/checks/services"
 	"github.com/Siovos/siovos-audit/internal/checks/shells"
 	checkssh "github.com/Siovos/siovos-audit/internal/checks/ssh"
+	"github.com/Siovos/siovos-audit/internal/checks/storage"
 	"github.com/Siovos/siovos-audit/internal/checks/system"
 	checktime "github.com/Siovos/siovos-audit/internal/checks/time"
 	"github.com/Siovos/siovos-audit/internal/checks/tls"
 	"github.com/Siovos/siovos-audit/internal/checks/vpn"
+	"github.com/Siovos/siovos-audit/internal/checks/webserver"
 )
 
 type compareFlags struct {
@@ -169,5 +175,11 @@ func defaultRegistry() *audit.Registry {
 	r.Register(insecure.New())
 	r.Register(checktime.New())
 	r.Register(shells.New())
+	r.Register(database.New())
+	r.Register(webserver.New())
+	r.Register(packages.New())
+	r.Register(malware.New())
+	r.Register(integrity.New())
+	r.Register(storage.New())
 	return r
 }
