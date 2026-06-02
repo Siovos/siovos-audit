@@ -30,7 +30,7 @@ Steps:
 
 1. Create a new directory under `internal/checks/yourcheck/`
 2. Implement the interface
-3. Register it in `cmd/siovos-audit/run.go`
+3. Register it in `cmd/siovos-audit/compare.go` (in `defaultRegistry()`)
 4. Add tests
 
 Example skeleton:
@@ -65,6 +65,8 @@ func (c *Check) Run(ctx context.Context, col collector.Collector) ([]audit.Findi
 - **Transport-agnostic**: use the `Collector` interface, never assume SSH or local.
 - **No scoring**: return `Finding` values with appropriate `Severity`. The scorer handles the rest.
 - **Include remediation**: tell the user how to fix the issue, not just that it exists.
+- **Use Facts for cross-referencing**: call `audit.GetFacts(ctx)` to access shared server state (firewall rules, users, services) instead of re-executing commands.
+- **Add explanations**: add an entry in `pkg/explain/explain.go` for your finding IDs so `--explain` provides context.
 
 ## Running tests
 

@@ -13,84 +13,160 @@ go install github.com/Siovos/siovos-audit@latest
 # Audit a remote server
 siovos-audit run --host 192.168.1.100 --user root
 
-# Audit specific checks only
-siovos-audit run --host 192.168.1.100 --user root --checks ssh,firewall
+# Interactive mode (guided prompts)
+siovos-audit run
+
+# With a server profile
+siovos-audit run --host 192.168.1.100 --user root --profile kubernetes-node
+
+# With detailed explanations
+siovos-audit run --host 192.168.1.100 --user root --explain
+
+# CIS compliance report
+siovos-audit run --host 192.168.1.100 --user root --compliance cis-level1
 
 # Audit the local machine
 siovos-audit run --local
 
 # JSON output (for CI/CD)
-siovos-audit run --host 192.168.1.100 --user root --format json
+siovos-audit run --host 192.168.1.100 --user root --format json --min-score 80
 
-# Fail if score is below threshold
-siovos-audit run --host 192.168.1.100 --user root --min-score 80
-
-# Save result to history
-siovos-audit run --host 192.168.1.100 --user root --save
+# HTML report
+siovos-audit run --host 192.168.1.100 --user root --format html > report.html
 
 # Compare two servers
 siovos-audit compare --host1 server-a.com --host2 server-b.com --user root
 
+# Server inventory (what's running, no scoring)
+siovos-audit inventory --host 192.168.1.100 --user root
+
 # View audit history
 siovos-audit history
 
-# HTML report
-siovos-audit run --host 192.168.1.100 --user root --format html > report.html
+# Update to latest version
+siovos-audit update
 ```
 
 ## Example output
 
 ```
   Siovos Audit
-  Target: my-server.com (Debian 13)
+  Target: my-server.com (Debian GNU/Linux 13)
 
-  Firewall ....................................... 90/100
+  auth .................................... 95/100
+    [PASS] Only root has UID 0
+    [PASS] Strong password hashing: YESCRYPT
+    [WARN] NOPASSWD sudo rules found (1)
+
+  firewall ................................ 100/100
     [PASS] UFW active
     [PASS] Default deny incoming
-    [WARN] Port 8080 open - verify if intentional
+    [PASS] Port 6443 (Kubernetes API) listening but blocked by firewall
+    [PASS] Firewall logging enabled
 
-  SSH Security ................................... 85/100
+  kubernetes .............................. 95/100
+    [PASS] RBAC enabled
+    [PASS] Network policies defined (5)
+    [PASS] API server not exposed on all interfaces
+
+  ssh ..................................... 90/100
     [PASS] Password authentication disabled
-    [PASS] Root login via key only
-    [PASS] Empty passwords not permitted
-    [PASS] SSH Protocol 2
+    [INFO] Root login via key only
+    [PASS] StrictModes enabled
+    [WARN] MaxAuthTries at default (6)
 
-  TLS Certificates ............................... 95/100
-    [PASS] Certificate valid: /etc/letsencrypt/live/example.com/fullchain.pem
-    [WARN] Certificate expires within 30 days
+  system .................................. 95/100
+    [PASS] No pending security updates
+    [PASS] AppArmor enabled
+    [PASS] ASLR enabled
+    [PASS] Core dumps disabled for SUID binaries
 
-  Exposed Services ............................... 70/100
-    [FAIL] Redis accessible on public interface (port 6379)
-    [WARN] Service exposed on port 3000
-    [PASS] No unexpected services exposed
-
-  Overall Score: 85/100
-  1 issues to fix, 3 warnings to review
+  Overall Score: 95/100
+  0 issues to fix, 3 warnings to review
 ```
 
-## Security checks
+## Security checks (26 categories)
 
+### Core hardening
 | Check | What it verifies |
 |---|---|
-| **SSH** | Password auth, root login, empty passwords, protocol version |
-| **Firewall** | UFW/iptables active, default deny policy, unexpected open ports |
-| **TLS** | Certificate validity, expiration, signature algorithm, key size |
-| **Services** | Publicly exposed services, high-risk ports (databases, Docker API) |
-| **Kubernetes** | RBAC, network policies, secrets encryption, API server exposure, pods as root |
-| **VPN** | WireGuard interfaces, config permissions, peer handshakes |
-| **System** | Security updates, unattended-upgrades, file permissions, kernel hardening |
-| **Network** | DNS configuration, IPv6 status, listening services |
+| **SSH** (19 checks) | Password auth, root login, ciphers, MACs, KexAlgorithms, X11/TCP forwarding, MaxAuthTries, ClientAlive, permissions |
+| **Firewall** (7) | UFW/iptables, default deny, open ports cross-referenced with UFW rules, fail2ban, logging |
+| **TLS** (5) | Certificate validity, expiration, signature algorithm, key size (RSA vs ECDSA) |
+| **System** (14) | Updates, unattended-upgrades, file permissions, kernel hardening (sysctl), ASLR, core dumps, mount options, umask, AppArmor/SELinux |
+| **Network** (6) | DNS, IPv6, listening services, IP forwarding, SYN cookies, promiscuous interfaces |
+| **Auth** (7) | UID 0 duplicates, passwordless accounts, system shells, password hashing/aging, sudo NOPASSWD, failed logins |
 
-## Why this tool
+### Services & applications
+| Check | What it verifies |
+|---|---|
+| **Services** (4) | Publicly exposed services with port identification, cross-referenced with firewall |
+| **Database** (4) | MySQL bind/permissions, PostgreSQL listen/trust auth, Redis requirepass/bind, MongoDB authorization |
+| **Web Server** (5) | Nginx tokens/logging/headers/SSL, Apache ServerTokens/TraceEnable |
+| **Kubernetes** (6) | RBAC, network policies, secrets encryption, API server, pods as root, K3s detection |
+| **VPN** (3) | WireGuard interfaces, config permissions, peer handshakes |
 
-Most developers deploy on a VPS, follow a hardening tutorial, and never verify the result. Existing tools are either enterprise-grade (OpenSCAP), require installation on the target (Lynis), or need a Ruby runtime (InSpec).
+### Infrastructure
+| Check | What it verifies |
+|---|---|
+| **Logging** (5) | Syslog, auditd, logrotate, auth logs, remote logging |
+| **Cron** (5) | Daemon, permissions, root/user jobs, at jobs, systemd timers |
+| **Packages** (4) | GPG signing, security repos, kernel count, audit tools |
+| **Insecure** (10) | Telnet, rsh, NIS, TFTP, FTP, inetd/xinetd detection |
+| **Time** (2) | NTP daemon, clock synchronization |
+| **Shells** (3) | TMOUT idle timeout, umask profiles, home permissions |
+| **Storage** (2) | NFS exports, USB storage module |
 
-Siovos Audit is different:
-- **Agentless** - connects via SSH, reads config, leaves. Nothing installed on your server.
-- **Single binary** - download and run. No runtime, no dependencies.
-- **Opinionated** - useful checks out of the box, no profiles to write.
-- **Scoring** - clear 0-100 score per category with PASS/WARN/FAIL for each finding.
-- **CI/CD ready** - JSON output and `--min-score` flag for pipeline gates.
+### Advanced detection
+| Check | What it verifies |
+|---|---|
+| **Secrets** (4) | .env files in webroots, .git exposed, config passwords, SSH key permissions |
+| **Post-Exploit** (4) | Executables in /tmp, recent users, suspicious history, modified binaries |
+| **DNS** (2) | SPF and DMARC records |
+| **Containers** (3) | Docker socket, privileged containers, dangerous volumes |
+| **Backups** (3) | Backup tools, cron jobs, systemd timers |
+| **Malware** (1) | chkrootkit, rkhunter, ClamAV detection |
+| **Integrity** (1) | AIDE, Tripwire, OSSEC, Wazuh, osquery detection |
+
+## Features
+
+- **Agentless** — connects via SSH, reads config, leaves. Nothing installed on your server.
+- **Single binary** — download and run. No runtime, no dependencies.
+- **120+ checks** across 26 categories.
+- **Intelligent** — cross-references firewall rules with listening ports, adapts fail2ban severity when password auth is disabled.
+- **Profiles** — `minimal-vps`, `web-server`, `kubernetes-node`, `database-server`, `vpn-gateway` with expected ports.
+- **Interactive mode** — guided prompts when no flags are provided.
+- **--explain** — human-readable descriptions of why each finding matters and how to fix it.
+- **Compliance** — CIS Benchmark Level 1 and SOC2 Type II mappings.
+- **Inventory** — `siovos-audit inventory` lists everything running on a server without scoring.
+- **CI/CD ready** — JSON output, `--min-score` exit code, GitHub Action, GitLab CI template.
+- **Compare** — side-by-side comparison of two servers.
+- **History** — save and review past audit results.
+- **Self-update** — `siovos-audit update` downloads the latest version.
+
+## Server profiles
+
+Profiles pre-configure expected ports and relevant checks:
+
+```bash
+# Basic VPS — SSH, web, standard checks
+siovos-audit run --host x --user root --profile minimal-vps
+
+# Kubernetes node — K8s ports expected, K8s checks enabled
+siovos-audit run --host x --user root --profile kubernetes-node
+
+# Add custom expected ports on top
+siovos-audit run --host x --user root --profile kubernetes-node --expect-ports 9100,3000
+```
+
+Or in `.siovos-audit.yml`:
+
+```yaml
+profile: kubernetes-node
+expected_ports: [9100, 9090]
+suppress:
+  - system-sysctl-net-ipv4-conf-all-rp_filter
+```
 
 ## Build from source
 
@@ -107,46 +183,44 @@ Requires Go 1.22+.
 
 ```
 siovos-audit/
-├── cmd/siovos-audit/     # CLI entry point
+├── cmd/siovos-audit/     # CLI (run, compare, inventory, history, update)
 ├── pkg/
-│   ├── audit/            # Core types: Engine, Check, Finding, Registry, Scorer
-│   ├── collector/        # Transport abstraction: SSH, local
+│   ├── audit/            # Engine, Check, Finding, Registry, Scorer, Facts, Config, Profiles
+│   ├── collector/        # Transport: SSH, local, cached wrapper
 │   ├── scoring/          # Score calculation
 │   ├── reporter/         # Output: terminal, JSON, HTML
-│   ├── store/            # Result persistence (file-based)
+│   ├── explain/          # Pedagogical descriptions for findings
+│   ├── compliance/       # CIS, SOC2 mappings
+│   ├── store/            # Result persistence
 │   └── plugin/           # External check plugin system
-└── internal/checks/      # Check implementations (8 checks)
+└── internal/checks/      # 26 check implementations
 ```
-
-Checks use the `Collector` interface and never depend on the transport method. Adding a new check means implementing the `Check` interface and registering it.
 
 ## Security guarantees
 
-- **Read-only** - never modifies anything on the target
-- **No credentials stored** - SSH keys are used in-memory only
-- **No phone home** - all processing is local, no external calls
-- **Minimal dependencies** - small attack surface
+- **Read-only** — never modifies anything on the target
+- **No credentials stored** — SSH keys are used in-memory only
+- **No phone home** — all processing is local, no external calls
+- **Minimal dependencies** — small attack surface
 
 ## Roadmap
 
-- [x] SSH, firewall, TLS, exposed services checks
-- [x] Kubernetes, VPN, system, network checks
-- [x] Scoring system (per-category + overall)
-- [x] Terminal, JSON, and HTML output
-- [x] Local audit mode
+- [x] 26 security check categories (~120 checks)
+- [x] Intelligent cross-referencing (firewall rules, package manager, service detection)
+- [x] Server profiles and expected ports
+- [x] Interactive mode with guided prompts
+- [x] --explain mode with pedagogical descriptions
+- [x] CIS and SOC2 compliance templates
+- [x] Server inventory command
 - [x] CI/CD integration (GitHub Action + GitLab CI template)
-- [x] Server comparison mode
-- [x] Audit history with `--save`
-- [x] Plugin system for custom checks
-- [x] Config file to suppress false positives
+- [x] Server comparison and audit history
+- [x] Self-update command
 - [ ] Web dashboard
-- [ ] Scheduled audits
-- [ ] Compliance templates (SOC2, ISO 27001)
 
 ## Contributing
 
-Contributions welcome, especially new security checks. See the `Check` interface in `pkg/audit/check.go` for how to add one.
+Contributions welcome, especially new security checks. See `CONTRIBUTING.md` and the `Check` interface in `pkg/audit/check.go`.
 
 ## License
 
-MIT - See [LICENSE](LICENSE) for details.
+MIT — See [LICENSE](LICENSE) for details.
