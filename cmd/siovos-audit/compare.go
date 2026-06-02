@@ -13,8 +13,11 @@ import (
 	"github.com/Siovos/siovos-audit/pkg/scoring"
 
 	"github.com/Siovos/siovos-audit/internal/checks/auth"
+	"github.com/Siovos/siovos-audit/internal/checks/backup"
+	"github.com/Siovos/siovos-audit/internal/checks/container"
 	"github.com/Siovos/siovos-audit/internal/checks/cron"
 	"github.com/Siovos/siovos-audit/internal/checks/database"
+	"github.com/Siovos/siovos-audit/internal/checks/dns"
 	"github.com/Siovos/siovos-audit/internal/checks/firewall"
 	"github.com/Siovos/siovos-audit/internal/checks/insecure"
 	"github.com/Siovos/siovos-audit/internal/checks/integrity"
@@ -23,6 +26,8 @@ import (
 	"github.com/Siovos/siovos-audit/internal/checks/malware"
 	"github.com/Siovos/siovos-audit/internal/checks/network"
 	"github.com/Siovos/siovos-audit/internal/checks/packages"
+	"github.com/Siovos/siovos-audit/internal/checks/postexploit"
+	"github.com/Siovos/siovos-audit/internal/checks/secrets"
 	"github.com/Siovos/siovos-audit/internal/checks/services"
 	"github.com/Siovos/siovos-audit/internal/checks/shells"
 	checkssh "github.com/Siovos/siovos-audit/internal/checks/ssh"
@@ -181,5 +186,10 @@ func defaultRegistry() *audit.Registry {
 	r.Register(malware.New())
 	r.Register(integrity.New())
 	r.Register(storage.New())
+	r.Register(secrets.New())
+	r.Register(postexploit.New())
+	r.Register(dns.New())
+	r.Register(container.New())
+	r.Register(backup.New())
 	return r
 }
