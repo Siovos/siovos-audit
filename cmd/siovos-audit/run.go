@@ -11,6 +11,7 @@ import (
 
 	"github.com/Siovos/siovos-audit/pkg/audit"
 	"github.com/Siovos/siovos-audit/pkg/collector"
+	"github.com/Siovos/siovos-audit/pkg/explain"
 	"github.com/Siovos/siovos-audit/pkg/reporter"
 	"github.com/Siovos/siovos-audit/pkg/scoring"
 	"github.com/Siovos/siovos-audit/pkg/store"
@@ -29,6 +30,7 @@ type runFlags struct {
 	save        bool
 	profile     string
 	expectPorts string
+	explainMode bool
 }
 
 func newRunCmd() *cobra.Command {
@@ -59,6 +61,7 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.save, "save", false, "Save result to history")
 	cmd.Flags().StringVar(&f.profile, "profile", "", "Server profile: minimal-vps, web-server, kubernetes-node, database-server, vpn-gateway, full")
 	cmd.Flags().StringVar(&f.expectPorts, "expect-ports", "", "Additional expected ports, comma-separated (e.g. 9100,9090,3000)")
+	cmd.Flags().BoolVar(&f.explainMode, "explain", false, "Add detailed explanations to findings (why it matters, risk, how to fix)")
 
 	return cmd
 }
@@ -122,6 +125,9 @@ func runAudit(ctx context.Context, f *runFlags) error {
 	}
 
 	result.Findings = cfg.FilterFindings(result.Findings)
+	if f.explainMode {
+		result.Findings = explain.Enrich(result.Findings)
+	}
 	result.Score = scorer.Score(result.Findings)
 
 	rep, err := createReporter(f.format)

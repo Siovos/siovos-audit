@@ -45,6 +45,14 @@ func (r *TerminalReporter) Report(result *audit.AuditResult, w io.Writer) error 
 			for _, f := range findings {
 				tag := severityTag(f.Severity)
 				fmt.Fprintf(w, "    %s %s\n", tag, f.Title)
+				if f.Description != "" {
+					fmt.Fprintf(w, "         %s%s%s\n", colorDim, f.Description, colorReset)
+				}
+				if f.Remediation != "" && f.Severity >= audit.SeverityWarn {
+					for _, line := range strings.Split(f.Remediation, "\n") {
+						fmt.Fprintf(w, "         %s→ %s%s\n", colorCyan, line, colorReset)
+					}
+				}
 			}
 		}
 		fmt.Fprintln(w)
