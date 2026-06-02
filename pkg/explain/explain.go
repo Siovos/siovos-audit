@@ -49,6 +49,21 @@ var prefixCatalog = map[string]Explanation{
 	"services-exposed": {
 		Why: "A publicly exposed service increases your attack surface. Services should only be accessible to those who need them.",
 	},
+	"cron-perms-": {
+		Why: "If cron directories are world-writable or too open, any user could add scheduled tasks running as root.",
+	},
+	"secrets-env-": {
+		Why: "Environment files often contain database passwords, API keys, and other credentials. If accessible via web server, anyone can read them.",
+	},
+	"secrets-git-": {
+		Why: "A .git directory exposes source code, commit history, and potentially credentials.",
+	},
+	"postexploit-tmp-exec": {
+		Why: "Executables in /tmp or /dev/shm are a common indicator of compromise. Attackers download and run malware in world-writable directories.",
+	},
+	"container-dangerous-volume": {
+		Why: "Mounting the host root filesystem, /etc, or the Docker socket into a container gives the container full host access.",
+	},
 }
 
 var catalog = map[string]Explanation{
@@ -225,5 +240,112 @@ var catalog = map[string]Explanation{
 		Why:  "File integrity monitoring detects unauthorized changes to system files. If an attacker modifies binaries or configs, you'll know.",
 		Risk: "Tampered system files go undetected.",
 		Fix:  "Install AIDE: apt install aide && aideinit",
+	},
+
+	// Cron
+	"cron-perms-crontab": {
+		Why:  "If cron directories are world-writable or too open, any user could add scheduled tasks running as root.",
+		Risk: "Privilege escalation via cron job injection.",
+		Fix:  "chmod 600 /etc/crontab && chmod 700 /etc/cron.d /etc/cron.daily /etc/cron.hourly",
+	},
+
+	// Shells
+	"shells-tmout": {
+		Why:  "Without an idle timeout, SSH sessions stay open indefinitely. An unattended terminal is a security risk.",
+		Risk: "Abandoned sessions can be hijacked by someone with physical or network access.",
+		Fix:  "Add to /etc/profile.d/timeout.sh:\n  TMOUT=900\n  readonly TMOUT\n  export TMOUT",
+	},
+
+	// Secrets
+	"secrets-git-": {
+		Why:  "A .git directory in a webroot exposes your entire source code, commit history, and potentially credentials to anyone on the internet.",
+		Risk: "Source code leak, credential exposure, full application compromise.",
+		Fix:  "Remove .git from webroot or add to nginx: location ~ /\\.git { deny all; }",
+	},
+
+	// Post-exploit
+	"postexploit-modified-binaries": {
+		Why:  "System binaries modified outside the package manager could indicate a rootkit or backdoor installation.",
+		Risk: "Persistent backdoor allowing the attacker to return even after password changes.",
+		Fix:  "Verify the files: dpkg -V or rpm -Va. Reinstall affected packages. Investigate the cause.",
+	},
+
+	// Container
+	"container-privileged": {
+		Why:  "Privileged containers have full access to the host kernel. A container escape gives root on the host.",
+		Risk: "Complete host compromise from within a container.",
+		Fix:  "Remove --privileged flag. Use specific capabilities (--cap-add) instead.",
+	},
+	"container-socket-perms": {
+		Why:  "The Docker socket grants root-equivalent access. If world-readable, any user can control Docker and the host.",
+		Risk: "Any local user can become root via Docker.",
+		Fix:  "chmod 660 /var/run/docker.sock && chgrp docker /var/run/docker.sock",
+	},
+
+	// Backup
+	"backup-none": {
+		Why:  "Without backups, a ransomware attack, hardware failure, or accidental deletion means permanent data loss.",
+		Risk: "Irrecoverable data loss.",
+		Fix:  "Install a backup tool (restic, borg) and configure automated daily backups to an off-site location.",
+	},
+
+	// DNS
+	"dns-spf": {
+		Why:  "Without SPF, anyone can send emails pretending to be from your domain. Email spoofing is used in phishing attacks.",
+		Risk: "Your domain used in phishing campaigns, reputation damage.",
+		Fix:  "Add a DNS TXT record: v=spf1 mx -all (adjust for your mail setup)",
+	},
+	"dns-dmarc": {
+		Why:  "DMARC tells receiving mail servers what to do with emails that fail SPF/DKIM. Without it, spoofed emails may still be delivered.",
+		Risk: "Phishing emails from your domain reach inboxes.",
+		Fix:  "Add a DNS TXT record at _dmarc.yourdomain.com: v=DMARC1; p=reject;",
+	},
+
+	// Database
+	"db-pg-listen": {
+		Why:  "A database listening on all interfaces is accessible from the internet, bypassing application-level security.",
+		Risk: "Direct database access — data theft, modification, or deletion.",
+		Fix:  "Set listen_addresses = 'localhost' in postgresql.conf and restart PostgreSQL.",
+	},
+	"db-mongo-auth": {
+		Why:  "MongoDB without authorization allows anyone to read, write, and delete all data without credentials.",
+		Risk: "Complete data compromise. MongoDB ransomware attacks are common.",
+		Fix:  "Enable authorization in /etc/mongod.conf: security.authorization: enabled",
+	},
+
+	// Webserver
+	"web-nginx-ssl": {
+		Why:  "TLS 1.0 and 1.1 have known vulnerabilities (POODLE, BEAST). Modern browsers don't even support them.",
+		Risk: "Encrypted traffic could be decrypted by an attacker.",
+		Fix:  "Set in nginx: ssl_protocols TLSv1.2 TLSv1.3;",
+	},
+	"web-nginx-access-log": {
+		Why:  "Without access logs, you can't detect attacks, debug issues, or analyze traffic patterns.",
+		Risk: "Attacks go undetected, no forensic evidence.",
+		Fix:  "Ensure access_log is enabled in nginx server blocks.",
+	},
+
+	// System
+	"system-core-dumps": {
+		Why:  "Core dumps of SUID programs can contain sensitive data like passwords and encryption keys.",
+		Risk: "Credential leakage from core dump files.",
+		Fix:  "Set fs.suid_dumpable = 0 in /etc/sysctl.conf && sysctl -p",
+	},
+	"system-tmp-noexec": {
+		Why:  "/tmp without noexec allows attackers to download and execute malware in a world-writable directory.",
+		Risk: "Easy malware execution after initial compromise.",
+		Fix:  "Add noexec to /tmp mount options in /etc/fstab",
+	},
+	"system-umask": {
+		Why:  "A permissive umask means newly created files are readable by other users by default.",
+		Risk: "Accidental exposure of sensitive files.",
+		Fix:  "Set UMASK 027 in /etc/login.defs",
+	},
+
+	// Packages
+	"pkg-gpg": {
+		Why:  "Repositories without GPG verification can serve tampered packages. A compromised mirror could install backdoors.",
+		Risk: "Supply chain attack via malicious package updates.",
+		Fix:  "Remove 'trusted=yes' from APT sources or set gpgcheck=1 in YUM repos.",
 	},
 }
