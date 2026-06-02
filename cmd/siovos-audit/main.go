@@ -23,6 +23,7 @@ func main() {
 	root.AddCommand(newCompareCmd())
 	root.AddCommand(newInventoryCmd())
 	root.AddCommand(newHistoryCmd())
+	root.AddCommand(newUpdateCmd())
 	root.AddCommand(newVersionCmd())
 
 	if err := root.Execute(); err != nil {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Siovos/siovos-audit/pkg/audit"
 	"github.com/Siovos/siovos-audit/pkg/collector"
+	"github.com/Siovos/siovos-audit/pkg/compliance"
 	"github.com/Siovos/siovos-audit/pkg/explain"
 	"github.com/Siovos/siovos-audit/pkg/reporter"
 	"github.com/Siovos/siovos-audit/pkg/scoring"
@@ -31,6 +32,7 @@ type runFlags struct {
 	profile     string
 	expectPorts string
 	explainMode bool
+	compliance  string
 }
 
 func newRunCmd() *cobra.Command {
@@ -62,6 +64,7 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&f.profile, "profile", "", "Server profile: minimal-vps, web-server, kubernetes-node, database-server, vpn-gateway, full")
 	cmd.Flags().StringVar(&f.expectPorts, "expect-ports", "", "Additional expected ports, comma-separated (e.g. 9100,9090,3000)")
 	cmd.Flags().BoolVar(&f.explainMode, "explain", false, "Add detailed explanations to findings (why it matters, risk, how to fix)")
+	cmd.Flags().StringVar(&f.compliance, "compliance", "", "Show compliance mapping: cis-level1, soc2-basic")
 
 	return cmd
 }
@@ -139,6 +142,10 @@ func runAudit(ctx context.Context, f *runFlags) error {
 		return err
 	}
 
+	if f.compliance != "" {
+		printCompliance(f.compliance, result)
+	}
+
 	if f.save {
 		home, _ := os.UserHomeDir()
 		dir := filepath.Join(home, ".siovos-audit", "history")
@@ -146,6 +153,9 @@ func runAudit(ctx context.Context, f *runFlags) error {
 			_ = s.Save(result)
 		}
 	}
+
+	// Non-blocking update check
+	go CheckUpdateAvailable()
 
 	if f.minScore > 0 && result.Score.Overall < f.minScore {
 		return fmt.Errorf("score %d is below minimum %d", result.Score.Overall, f.minScore)
@@ -167,6 +177,55 @@ func createCollector(f *runFlags) (collector.Collector, error) {
 		User:    f.user,
 		KeyPath: f.keyPath,
 	})
+}
+
+func printCompliance(frameworkID string, result *audit.AuditResult) {
+	fw, ok := compliance.Frameworks[frameworkID]
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Unknown compliance framework: %s\n", frameworkID)
+		return
+	}
+
+	findingsByID := make(map[string]audit.Finding)
+	for _, f := range result.Findings {
+		findingsByID[f.ID] = f
+	}
+
+	fmt.Printf("\n  \033[1m%s Compliance\033[0m\n", fw.Name)
+	fmt.Printf("  %s\n\n", fw.Description)
+
+	passed := 0
+	total := len(fw.Controls)
+
+	for _, ctrl := range fw.Controls {
+		allPass := true
+		for _, fid := range ctrl.FindingIDs {
+			if f, ok := findingsByID[fid]; ok {
+				if f.Severity >= audit.SeverityFail {
+					allPass = false
+					break
+				}
+			}
+		}
+
+		status := "\033[32mPASS\033[0m"
+		if !allPass {
+			status = "\033[31mFAIL\033[0m"
+		} else {
+			passed++
+		}
+		name := ctrl.Name
+		if ctrl.Description != "" {
+			name = ctrl.Name + " — " + ctrl.Description
+		}
+		fmt.Printf("  [%s] %s: %s\n", status, ctrl.ID, name)
+	}
+
+	pct := 0
+	if total > 0 {
+		pct = passed * 100 / total
+	}
+	fmt.Printf("\n  Compliance: %d/%d controls passed (%d%%)\n\n", passed, total, pct)
 }
 
 func createReporter(format string) (reporter.Reporter, error) {
