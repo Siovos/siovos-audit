@@ -21,6 +21,7 @@ func main() {
 
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newCompareCmd())
+	root.AddCommand(newInventoryCmd())
 	root.AddCommand(newHistoryCmd())
 	root.AddCommand(newVersionCmd())
 
