@@ -7,7 +7,10 @@ Single binary, agentless, connects via SSH. Nothing to install on the target.
 ## Quick start
 
 ```bash
-# Install via Go
+# Install (Linux, macOS)
+curl -fsSL https://raw.githubusercontent.com/Siovos/siovos-audit/main/install.sh | sh
+
+# Or via Go
 go install github.com/Siovos/siovos-audit@latest
 
 # Audit a remote server
