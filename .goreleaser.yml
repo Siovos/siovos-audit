@@ -12,6 +12,9 @@ builds:
       - amd64
       - arm64
 
+universal_binaries:
+  - replace: true
+
 archives:
   - format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
