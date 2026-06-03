@@ -17,6 +17,7 @@ import (
 	"github.com/Siovos/siovos-audit/internal/checks/container"
 	"github.com/Siovos/siovos-audit/internal/checks/cron"
 	"github.com/Siovos/siovos-audit/internal/checks/database"
+	"github.com/Siovos/siovos-audit/internal/checks/deepintegrity"
 	"github.com/Siovos/siovos-audit/internal/checks/dns"
 	"github.com/Siovos/siovos-audit/internal/checks/firewall"
 	"github.com/Siovos/siovos-audit/internal/checks/insecure"
@@ -191,5 +192,6 @@ func defaultRegistry() *audit.Registry {
 	r.Register(dns.New())
 	r.Register(container.New())
 	r.Register(backup.New())
+	r.Register(deepintegrity.New())
 	return r
 }
