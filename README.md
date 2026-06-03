@@ -128,11 +128,16 @@ siovos-audit update
 | **Malware** (1) | chkrootkit, rkhunter, ClamAV detection |
 | **Integrity** (1) | AIDE, Tripwire, OSSEC, Wazuh, osquery detection |
 
+### Deep integrity (intrusion detection)
+| Check | What it verifies |
+|---|---|
+| **Deep Integrity** (9) | Orphan binaries (cross-refs processes with dpkg), package integrity (dpkg -V), hidden processes (ps vs /proc), hidden ports (ss vs /proc/net), outbound connections correlated with processes, rootkit signatures (20+ known paths), kernel modules verification, hidden files in system dirs, rkhunter wrapper |
+
 ## Features
 
 - **Agentless** — connects via SSH, reads config, leaves. Nothing installed on your server.
 - **Single binary** — download and run. No runtime, no dependencies.
-- **120+ checks** across 26 categories.
+- **130+ checks** across 27 categories.
 - **Intelligent** — cross-references firewall rules with listening ports, adapts fail2ban severity when password auth is disabled.
 - **Profiles** — `minimal-vps`, `web-server`, `kubernetes-node`, `database-server`, `vpn-gateway` with expected ports.
 - **Interactive mode** — guided prompts when no flags are provided.
