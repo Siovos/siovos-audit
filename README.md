@@ -10,9 +10,6 @@ Single binary, agentless, connects via SSH. Nothing to install on the target.
 # Install (Linux, macOS)
 curl -fsSL https://raw.githubusercontent.com/Siovos/siovos-audit/main/install.sh | sh
 
-# Or via Go
-go install github.com/Siovos/siovos-audit@latest
-
 # Audit a remote server
 siovos-audit run --host 192.168.1.100 --user root
 
